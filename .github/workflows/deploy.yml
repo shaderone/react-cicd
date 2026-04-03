@@ -1,83 +1,53 @@
-# -----------------------------------------------------------------------------
-# GitHub Actions Workflow for Building and Deploying a Vite React App
-# -----------------------------------------------------------------------------
-# This file tells GitHub Actions how to automatically build your React app
-# and deploy it to GitHub Pages every time you push code to the main branch.
+name: React-app-mulearn Native Deploy Pipeline
 
-# 1. Workflow Name
-# This is the name that will appear in the "Actions" tab of your GitHub repository.
-name: React-app-mulearn Deploy Pipeline
-
-# 2. Trigger Events (The 'on' block)
-# This section defines exactly WHEN this workflow should run.
 on:
-  # We specify the 'push' event, meaning this runs whenever someone pushes code.
   push:
-    # We restrict this to only run when commits are pushed to the 'main' branch.
-    # Pushing to other branches won't trigger this deployment, which is great
-    # for testing things on separate branches without affecting the live site.
-    branches: [main]
+    branches: ["main"]
 
-# 3. Permissions
-# We need to give the GitHub Token permissions to read the repository contents
-# and write to the repository (specifically, to create the gh-pages branch).
-# Without this, the deployment step will fail with an access denied error.
+# These permissions are required specifically for deploying directly to GitHub Pages
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
-# 4. Jobs definition
-# A workflow consists of one or more "jobs". Each job runs in its own environment.
+# Prevent multiple builds from running at exactly the same time and crashing into each other
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
-  # We are defining a single job named "build-and-deploy".
-  build-and-deploy:
-    # 'runs-on' specifies the virtual machine environment for the job.
-    # 'ubuntu-latest' gives us a fresh, clean Ubuntu Linux virtual machine.
+  deploy:
+    # We specify this is a 'github-pages' environment deployment.
+    # This automatically gives us that nice link in the Actions tab.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
     runs-on: ubuntu-latest
-
-    # 'steps' is a list of sequential tasks to execute inside our virtual machine.
     steps:
-      # Step 1: Checkout code
-      # This step downloads your repository's code onto the Ubuntu runner (VM).
-      # Without this, the runner would have an empty folder!
-      # We use a pre-built action called `checkout@v4` provided by GitHub.
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      
-      # Step 2: Setup Node.js environment
-      # The pristine Ubuntu VM doesn't come with Node.js pre-installed.
-      # We need Node.js and NPM to install React dependencies and build the app.
-      # We use the `setup-node@v4` action to seamlessly install Node.js.
-      - name: Setup Node.js
+        
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # We specify Node.js version 20, which is a stable Long Term Support (LTS) version.
           node-version: '20'
-
-      # Step 3: Install dependencies
-      # We run standard bash commands on the VM using the `run` keyword.
-      # This command reads your package.json and installs all libraries (React, Vite, etc.)
-      # into a node_modules folder on the virtual machine.
+          
       - name: Install dependencies
         run: npm install
-
-      # Step 4: Build the application
-      # This converts your React JSX and CSS code into standard static HTML/JS/CSS files.
-      # The output of this command will be placed in a folder called 'dist'.
+        
       - name: Build the app
         run: npm run build
-
-      # Step 5: Deploy to GitHub Pages
-      # Now that we have static files inside the 'dist' folder, we want to publish them.
-      # We use an open-source action (peaceiris/actions-gh-pages) that handles the complex
-      # git commands to push our 'dist' folder to a magical branch called 'gh-pages'.
-      # GitHub knows to look at the 'gh-pages' branch and serve it on the internet!
-      - name: Deploy the app
-        uses: peaceiris/actions-gh-pages@v3
+        
+      - name: Setup GitHub Pages natively
+        uses: actions/configure-pages@v4
+        
+      - name: Upload the dist folder as an artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          # This relies on the GITHUB_TOKEN automatically provided by GitHub Actions
-          # to authenticate and authorize the push to the gh-pages branch.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # This takes everything Vite outputs and bundles it into a zip package
+          path: './dist'
           
-          # This tells the action WHICH folder we actually want to publish.
-          # Since Vite puts its final built files in the 'dist' folder, we specify it here.
-          publish_dir: ./dist
+      - name: Deploy the artifact directly to the GitHub Pages environment
+        id: deployment
+        uses: actions/deploy-pages@v4
